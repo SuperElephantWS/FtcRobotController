@@ -36,9 +36,9 @@ Validation: the five complete Java examples were compiled against the locally ca
 |---|---:|---|
 | Mecanum drive motor and wheel | 4 | Forward, backward, strafe, turn |
 | Intake motor | 1 | Hold to collect; hold another button to reverse |
-| Intake side servo | 2 | Confirm whether each rotates continuously or moves to a position |
+| Continuous-rotation intake side servo | 2 | Verify collecting direction, neutral, and power |
 | Shooter motor | 1 | Measure speed using its encoder; control a target speed |
-| Indexing/feeder servo | 1 | One calibrated feed cycle per button press |
+| Continuous-rotation indexing/feeder servo | 1 | One calibrated timed feed pulse per button press |
 
 You have **six DC motors now**. The slide will bring the total to **seven**. A REV Control Hub has four DC motor ports. The wiring plan here assumes **one Control Hub and one Expansion Hub**, providing eight motor ports. If your kit uses a different extra motor controller, adapt the hardware mapping and speed-control approach to that controller before using the mechanism examples. See [REV Control Hub specifications](https://www.revrobotics.com/rev-31-1595/).
 
@@ -60,8 +60,8 @@ This guide assumes **Limelight 3A** for its wiring and Java examples. Confirm th
 Record the following in section 14 as you learn them. You can complete the driving stage before resolving the mechanism details.
 
 - Exact drive, intake, shooter, and slide motor model numbers and gear ratios.
-- Whether the intake side servos are **continuous rotation** or **positional**. Some programmable goBILDA servos can be set to different modes; inspect their actual programmed mode.
-- Whether the feeder is a positional gate/pusher or a continuous-rotation device. The feeder example assumes **positional**.
+- All three servos are confirmed **continuous rotation**: two intake side servos and one feeder. Record their exact models, neutral calibration, and directions.
+- Feeder power and pulse duration that advance one piece. Timed rotation does not measure an index position; add feedback if repeatable angular indexing is required.
 - Shooter transmission ratio and motor encoder counts per output-shaft revolution.
 - Slide rigging arrangement, usable carriage travel, and travel per motor revolution.
 - Which odometry pods you will use: Swingarm, 4-Bar, or another model.
@@ -341,63 +341,57 @@ Keep 30% power until these pass. Later raise it gradually. Remove wheel-test con
 
 1. Read each servo model label and programmed mode.
 2. Configure each hub port with the matching servo type.
-3. Identify whether each intake side servo spins a roller or deploys a side arm.
-4. The mechanism program in section 6 assumes **two continuous-rotation intake servos** and **one positional feeder**.
-5. If the intake servos position arms, use section 6.5's changes instead.
+3. Your robot has **three continuous-rotation servos**: two intake side servos and one indexing/feeder servo.
+4. The mechanism program in section 6 maps all three as `CRServo` and uses `setPower(...)`.
+5. Configure all three hub ports as continuous-rotation servos. Zero power stops rotation; no positional endpoints are used.
 
-### 5.2 Calibrate a positional feeder with `RoboGoatsServoTest.java`
+### 5.2 Calibrate the CR feeder with `RoboGoatsServoTest.java`
 
-Start with the horn/linkage disconnected or positioned so a midpoint command cannot bind the mechanism. Run only this test; the shooter stays unpowered. The servo will first receive its midpoint command after START.
+This test maps only the feeder. Keep the shooter unpowered and remove game pieces for the first direction test. Hold A to rotate slowly in one direction, B to reverse, and release both to stop. B takes priority if both buttons are held.
 
 ```java
 package org.firstinspires.ftc.teamcode;
 
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
-import com.qualcomm.robotcore.hardware.Servo;
-import com.qualcomm.robotcore.util.Range;
+import com.qualcomm.robotcore.hardware.CRServo;
 
 @TeleOp(name = "13965 Servo Calibration", group = "RoboGoats Tests")
 public class RoboGoatsServoTest extends LinearOpMode {
     @Override
     public void runOpMode() throws InterruptedException {
-        // Change ONLY this name when testing a different positional servo.
-        Servo servo = hardwareMap.get(Servo.class, "feeder");
-        double position = 0.50;
-        boolean lastUp = false;
-        boolean lastDown = false;
-        telemetry.addLine("START commands midpoint. Disconnect linkage first.");
+        // Test intake_left or intake_right by changing this name.
+        CRServo servo = hardwareMap.get(CRServo.class, "feeder");
+        servo.setDirection(CRServo.Direction.FORWARD); // VERIFY
+        servo.setPower(0);
+        telemetry.addLine("Hold A: +0.15; hold B: -0.15; release: stop.");
         telemetry.update();
         waitForStart();
-        if (isStopRequested()) return;
-        servo.setPosition(position);
-
-        while (opModeIsActive()) {
-            if (gamepad1.dpad_up && !lastUp) position += 0.01;
-            if (gamepad1.dpad_down && !lastDown) position -= 0.01;
-            position = Range.clip(position, 0.05, 0.95);
-            servo.setPosition(position);
-            lastUp = gamepad1.dpad_up;
-            lastDown = gamepad1.dpad_down;
-            telemetry.addData("Commanded position", "%.2f", position);
-            telemetry.addLine("One D-pad press = 0.01. STOP if binding occurs.");
-            telemetry.update();
-            idle();
+        try {
+            while (opModeIsActive()) {
+                double power = gamepad1.b ? -0.15 : (gamepad1.a ? 0.15 : 0.0);
+                servo.setPower(power);
+                telemetry.addData("Commanded power", power);
+                telemetry.update();
+                idle();
+            }
+        } finally {
+            servo.setPower(0);
         }
     }
 }
 ```
 
-1. Run with linkage detached and confirm small steps work.
-2. STOP. Attach the linkage at a known suitable orientation with power off.
-3. Restart only if the midpoint is mechanically reachable. Otherwise change the initial test position to your established reachable value.
-4. Move in small steps toward the **rest/closed** position. Record it as `FEEDER_REST`.
-5. Move toward the **feed/open** position. Record it as `FEEDER_FEED`.
-6. Stay clear of mechanical end stops. The test's 0.05–0.95 range is only a software range, not proof that the linkage can reach every value.
-7. Measure enough dwell time to pass one piece and enough return time to close fully.
-8. Repeat at least ten cycles by hand-controlled commands before adding automatic timing.
+1. Confirm the configured `feeder` port is a continuous-rotation servo.
+2. Run without a piece and determine which direction advances the feeder. Reverse `setDirection(...)` if needed so positive power feeds.
+3. Release both buttons and verify zero power stops the servo. If it creeps, calibrate neutral using the servo manufacturer's procedure.
+4. Start with low power and brief holds. Increase only enough to move the mechanism reliably without stalling.
+5. With the shooter disabled and a suitable test arrangement, check how far a short pulse advances the mechanism. Avoid pushing a piece into a stopped flywheel or a blocked path.
+6. Record the feed power as `FEEDER_POWER` and the time needed to advance one piece as `FEED_SECONDS`.
+7. Record a stopped interval as `SETTLE_SECONDS` so the mechanism and piece can settle before another cycle.
+8. Repeat at least ten times under representative load. Inspect overshoot, incomplete feeds, and double feeds before enabling automatic feeding.
 
-A continuous-rotation feeder cannot reliably index to a repeatable position using `setPosition`. Use a suitable positional servo or add feedback and a different controller if that is your hardware.
+A CR servo controls rotation speed and direction, not shaft position. A timed pulse is an initial open-loop feeding method; it does not guarantee one exact revolution or a repeatable index position. If the feeder requires exact indexing, add a suitable home/index sensor or encoder and a bounded feedback-controlled cycle. Canceling a pulse can leave it partway through an index; inspect and realign before resuming.
 
 ### 5.3 Test continuous-rotation intake servos
 
@@ -463,21 +457,21 @@ The hub's built-in velocity controller is the first approach. If speed cannot tr
 The feeder should have explicit states:
 
 ```text
-REST -> PUSH -> RETURN -> REST
+REST -> FEED -> SETTLE -> REST
 ```
 
 - A new button press requests one cycle.
 - Feed only after shooter velocity remains close to its target for a short continuous interval.
-- During PUSH and RETURN, continue updating driving, intake, and shooter every loop.
+- During FEED, apply calibrated CR-servo power for a bounded pulse. During SETTLE and REST, command zero power. Continue updating driving, intake, and shooter every loop.
 - Ignore extra feed requests until the current cycle finishes.
-- Stop feeding and command rest when shooter enable is released or the operator cancels.
+- Stop feeder rotation immediately when shooter enable is released or the operator cancels. Zero power does not return the shaft to a known angle.
 - Speed readiness permits feeding; it does not prove a piece is present or that a jam cannot occur.
 
 Do not put `sleep(500)` in the main driving loop to operate the feeder. A timer/state machine lets the robot keep responding.
 
 ### 6.4 Create `RoboGoatsMechanismTest.java`
 
-This complete **stationary mechanism test** does not drive the robot. It assumes CR intake servos and a positional feeder. Three guards start disabled: enable the intake after checking directions, the shooter after determining a target, and feeding after servo calibration. Calibrate one feature at a time.
+This complete **stationary mechanism test** does not drive the robot. It uses three CR servos: two intake side servos and one feeder. Three guards start disabled: enable the intake after checking directions, the shooter after determining a target, and feeding after servo calibration. Calibrate one feature at a time.
 
 ```java
 package org.firstinspires.ftc.teamcode;
@@ -487,7 +481,6 @@ import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.CRServo;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
-import com.qualcomm.robotcore.hardware.Servo;
 import com.qualcomm.robotcore.util.ElapsedTime;
 
 @TeleOp(name = "13965 Mechanism Test", group = "RoboGoats Tests")
@@ -499,11 +492,10 @@ public class RoboGoatsMechanismTest extends LinearOpMode {
 
     private static final double SHOOTER_TPS = 0;       // MEASURE, must be > 0
     private static final double SPEED_TOLERANCE_TPS = 0; // MEASURE, must be > 0
-    private static final double FEEDER_REST = 0.50;    // CALIBRATE
-    private static final double FEEDER_FEED = 0.55;    // CALIBRATE
-    private static final double PUSH_SECONDS = 0.20;  // CALIBRATE
-    private static final double RETURN_SECONDS = 0.25;// CALIBRATE
-    private enum FeedState { REST, PUSH, RETURN }
+    private static final double FEEDER_POWER = 0.15;  // CALIBRATE power and direction
+    private static final double FEED_SECONDS = 0.20;  // CALIBRATE one-piece pulse
+    private static final double SETTLE_SECONDS = 0.25;// CALIBRATE stopped interval
+    private enum FeedState { REST, FEED, SETTLE }
 
     @Override
     public void runOpMode() throws InterruptedException {
@@ -511,7 +503,9 @@ public class RoboGoatsMechanismTest extends LinearOpMode {
         CRServo left = hardwareMap.get(CRServo.class, "intake_left");
         CRServo right = hardwareMap.get(CRServo.class, "intake_right");
         DcMotorEx shooter = hardwareMap.get(DcMotorEx.class, "shooter_motor");
-        Servo feeder = hardwareMap.get(Servo.class, "feeder");
+        CRServo feeder = hardwareMap.get(CRServo.class, "feeder");
+        feeder.setDirection(CRServo.Direction.FORWARD); // VERIFY positive feeds
+        feeder.setPower(0);
 
         intake.setPower(0);
         intake.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
@@ -540,7 +534,7 @@ public class RoboGoatsMechanismTest extends LinearOpMode {
 
         try {
             if (isStopRequested()) return;
-            if (FEEDER_CALIBRATED) feeder.setPosition(FEEDER_REST);
+            feeder.setPower(0);
             while (opModeIsActive()) {
                 double now = clock.seconds();
                 boolean cancel = gamepad2.b;
@@ -570,19 +564,18 @@ public class RoboGoatsMechanismTest extends LinearOpMode {
                 if (!enabled || cancel || !FEEDER_CALIBRATED) {
                     state = FeedState.REST;
                 } else if (state == FeedState.REST && feedEdge && ready) {
-                    state = FeedState.PUSH;
+                    state = FeedState.FEED;
                     stateStarted = now;
                     withinSpeedSince = -1; // Require recovery before another feed.
-                } else if (state == FeedState.PUSH && now - stateStarted >= PUSH_SECONDS) {
-                    state = FeedState.RETURN;
+                } else if (state == FeedState.FEED && now - stateStarted >= FEED_SECONDS) {
+                    state = FeedState.SETTLE;
                     stateStarted = now;
-                } else if (state == FeedState.RETURN && now - stateStarted >= RETURN_SECONDS) {
+                } else if (state == FeedState.SETTLE && now - stateStarted >= SETTLE_SECONDS) {
                     state = FeedState.REST;
                 }
 
-                if (FEEDER_CALIBRATED) {
-                    feeder.setPosition(state == FeedState.PUSH ? FEEDER_FEED : FEEDER_REST);
-                }
+                feeder.setPower(FEEDER_CALIBRATED && state == FeedState.FEED
+                        ? FEEDER_POWER : 0.0);
                 telemetry.addData("Intake power", intakePower);
                 telemetry.addData("Shooter requested / measured", "%.0f / %.0f",
                         enabled ? SHOOTER_TPS : 0, measured);
@@ -596,7 +589,7 @@ public class RoboGoatsMechanismTest extends LinearOpMode {
             left.setPower(0);
             right.setPower(0);
             shooter.setPower(0);
-            if (FEEDER_CALIBRATED) feeder.setPosition(FEEDER_REST);
+            feeder.setPower(0);
         }
     }
 }
@@ -607,46 +600,32 @@ Important behavior:
 1. All five hardware names must exist before this particular test can INIT. For earlier single-device tests, map only the device under test.
 2. The three false guards intentionally prevent actuation. Set only the guard for the feature you have commissioned to `true`.
 3. `SHOOTER_TPS = 0` prevents accidental spin-up. Replace it with your measured initial target. Set a measured tolerance appropriate for that target; a starting experiment might be approximately 5% of the target, then tune from logs.
-4. Set calibrated feeder positions and times before setting `FEEDER_CALIBRATED = true`. The displayed numbers are examples, not verified positions.
+4. Calibrate `FEEDER_POWER`, `FEED_SECONDS`, and `SETTLE_SECONDS` before setting `FEEDER_CALIBRATED = true`. The displayed values are examples, not verified settings. REST and SETTLE always command zero power.
 5. Assign a second controller to User 2. Without it, `gamepad2` inputs will not operate the mechanisms.
 6. Hold Y to spin up; wait for `Shooter ready = true`; tap A to feed once.
 7. Holding A does not repeat. Pressing A before readiness does not queue a shot; release and press again after readiness.
-8. Releasing Y stops shooter power and returns the feeder to rest. The flywheel may coast.
+8. Releasing Y stops shooter and feeder power immediately. The flywheel may coast; the feeder does not return to a known shaft angle. After an interrupted index, inspect and realign before another feed request.
 9. Holding B cancels outputs. If the other controls remain held when B is released, those hold controls can resume; release controls before resuming a test. Driver Station STOP ends the OpMode.
 
-### 6.5 If the intake side servos are positional
+### 6.5 Confirm all three CR servos stop correctly
 
-Change the mechanism example before running it:
-
-1. Replace the `CRServo` import with `Servo` if no CR servos remain.
-2. Map `left` and `right` using `Servo.class`.
-3. Remove their `CRServo.Direction` lines and all `setPower` calls on these two objects, including initialization and `finally`.
-4. Calibrate left/right **stowed** and **deployed** positions independently with the servo test. Mirrored positions are not necessarily identical.
-5. Declare four calibrated constants: `LEFT_STOW`, `LEFT_DEPLOY`, `RIGHT_STOW`, `RIGHT_DEPLOY`.
-6. Add a calibration guard for these arms, initially false. Do not command an unverified position at INIT.
-7. Once calibrated, use a deliberate operator control for deployment. For example, hold gamepad 2 right bumper to deploy, release to stow:
-
-```java
-// Fragment: left and right are positional Servo objects; constants are calibrated.
-if (ARMS_CALIBRATED) {
-    boolean deployed = gamepad2.right_bumper && !cancel;
-    left.setPosition(deployed ? LEFT_DEPLOY : LEFT_STOW);
-    right.setPosition(deployed ? RIGHT_DEPLOY : RIGHT_STOW);
-}
-```
-
-8. Add a timed deployment state if the intake motor must wait for arms to open. A commanded servo position does not prove the arm has arrived.
-9. Choose a shutdown position that your actual linkage can reach without collision. Returning to stow may itself cause movement.
+1. Test each intake side servo and the feeder independently with section 5.2's hold-to-run test.
+2. Verify positive intake commands collect and positive feeder commands advance a piece.
+3. Verify zero power stops each servo without creep.
+4. In the combined mechanism test, confirm the feeder runs only in FEED and stops during SETTLE and REST.
+5. Cancel a feed pulse partway through and verify power becomes zero immediately. Zero power is a stop command, not a return-to-home command.
+6. Check the feeder's physical alignment before restarting after a canceled pulse. Add a home/index sensor if automatic recovery requires a known position.
 
 ### 6.6 Mechanism acceptance checks
 
 - [ ] Intake collects in the intended direction and reverses on request.
 - [ ] Intake motor and both side servos stop when their hold control is released.
-- [ ] Positional arms, if used, reach both positions without binding.
+- [ ] All three CR servos stop at zero power without creep.
 - [ ] Shooter encoder reports believable changing velocity.
 - [ ] Shooter speed settles near the requested target.
 - [ ] Feeder refuses to start while shooter is below readiness.
-- [ ] Each A press gives one feed cycle.
+- [ ] Each accepted A press gives one bounded feed pulse, followed by a stopped settle interval.
+- [ ] Repeated tests confirm one piece per pulse; add index feedback if timing is insufficient.
 - [ ] Holding A never produces repeated cycles.
 - [ ] Shooter recovers before a second cycle is permitted.
 - [ ] Cancel and STOP behave as expected in every feeder state.
@@ -664,7 +643,7 @@ After the separate tests pass:
 5. Declare the mechanism state variables once before `waitForStart()`.
 6. Use **one** `waitForStart()` and **one** `while (opModeIsActive())` loop.
 7. Inside that loop, run the drive calculations, mechanism state update, and telemetry update in sequence. Each pass updates every subsystem.
-8. Combine cleanup into one `finally` block that stops all motors and CR servos and commands only calibrated, appropriate servo positions.
+8. Combine cleanup into one `finally` block that stops all motors and CR servos and commands zero power to all three CR servos.
 9. Build before deploying. Fix duplicate variable names and imports if copying code.
 10. Test combined controls at low drive power, first without game pieces.
 
@@ -682,7 +661,7 @@ Do not nest the entire mechanism `while` loop inside the drive loop. Do not call
 | 2 | Hold Y | Shooter enabled |
 | 2 | Tap A | Request one feed cycle |
 | 2 | Hold B | Mechanism cancel |
-| 2 | Right bumper | Deploy positional intake arms, if applicable |
+| 2 | Right bumper | Reserved for future use |
 | 2 | Left stick Y | Future slide manual command |
 | 2 | D-pad | Future slide presets |
 | 2 | Left bumper | Future explicit slide homing request |
@@ -1251,7 +1230,7 @@ WAIT_FOR_START
   -> SPIN_UP
   -> WAIT_FOR_SPEED
   -> FEED_ONE
-  -> RETURN_FEEDER
+  -> STOP_FEEDER_AND_SETTLE
   -> STOP
 
 Any timeout or required-sensor fault -> ABORT -> stop outputs
@@ -1280,7 +1259,7 @@ For longer paths, a maintained FTC path-following library may save work, but cho
 | Forward works but strafe fails | Wheel roller arrangement, motor signs, mixer unchanged |
 | Robot drives backward | Verify all four individual wheel directions, then retest forward |
 | Mechanisms ignore buttons | Guards still false, zero shooter constants, gamepad 2 not assigned |
-| Positional servo jumps or binds | Reachable initial position, horn alignment, calibrated endpoints, correct operating mode |
+| CR servo behaves like a positional servo | Actual programmed servo mode, configured device type, use of CRServo and setPower |
 | CR servo creeps when released | Zero command, neutral calibration, actual CR mode |
 | Shooter velocity stays zero | Encoder plugged into matching port, correct motor type, valid nonzero target |
 | Shooter never ready | Target achievable, velocity sign, tolerance, encoder, load, battery |
@@ -1314,9 +1293,9 @@ When troubleshooting, return to the smallest working test: drive-only, one motor
 | FTC SDK | 12.0.0 in this checkout |
 | Drive motor exact model | To record |
 | Intake motor exact model / collect direction | To record |
-| Intake left servo model / mode / direction or endpoints | To record |
-| Intake right servo model / mode / direction or endpoints | To record |
-| Feeder servo model / operating mode | To record |
+| Intake left CR servo model / direction / neutral | To record |
+| Intake right CR servo model / direction / neutral | To record |
+| Feeder CR servo model / direction / neutral | To record |
 | Shooter motor model / external speed ratio | To record |
 | Shooter output ticks/revolution | To record |
 | Slide motor model / rigging arrangement | To record |
@@ -1334,9 +1313,8 @@ When troubleshooting, return to the smallest working test: drive-only, one motor
 | FL / FR / BL / BR directions | | |
 | Normal / slow drive scale | Initial 0.30 / 0.15 | |
 | Intake motor / CR servo power | | |
-| Positional intake arm endpoints, if applicable | | |
-| Feeder rest / feed positions | | |
-| Feeder push / return duration | | |
+| Feeder power / direction | | |
+| Feeder pulse / stopped settle duration | | |
 | Shooter target ticks/s | | |
 | Shooter tolerance / settle duration | | |
 | Slide ticks/mm / maximum ticks | | |
@@ -1356,7 +1334,7 @@ When troubleshooting, return to the smallest working test: drive-only, one motor
 
 - [ ] M1: Drive-only program passes all motion and STOP checks.
 - [ ] M2: Intake operates forward/reverse and stops on release.
-- [ ] M3: All servo types identified and endpoints/directions recorded.
+- [ ] M3: All three CR servo directions and neutral behavior verified and recorded.
 - [ ] M4: Shooter velocity is repeatable with recorded units and target.
 - [ ] M5: Feeder completes one cycle per request with readiness interlock.
 - [ ] M6: Combined TeleOp drives and operates mechanisms concurrently.
@@ -1391,4 +1369,4 @@ Official setup and hardware references checked when preparing this guide:
 - [Limelight: FTC Java and Blockly API guide](https://docs.limelightvision.io/docs/docs-limelight/apis/ftc-programming)
 - [Limelight: software changelog, including USB IDs and FTC support notes](https://docs.limelightvision.io/docs/docs-limelight/software-change-log)
 
-Use the manual for the exact hardware revision you install. The snippets with calibration guards require robot measurements before actuation; code compilation alone cannot validate motor direction, servo travel, slide geometry, shooter readiness, or camera reliability.
+Use the manual for the exact hardware revision you install. The snippets with calibration guards require robot measurements before actuation; code compilation alone cannot validate motor direction, servo behavior, slide geometry, shooter readiness, or camera reliability.
