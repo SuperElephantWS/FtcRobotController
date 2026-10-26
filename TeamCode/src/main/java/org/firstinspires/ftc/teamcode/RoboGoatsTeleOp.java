@@ -40,21 +40,16 @@ import com.qualcomm.robotcore.hardware.PIDFCoefficients;
 
 import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 
-@TeleOp(name = "13965 RoboGoats TeleOp", group = "RoboGoats")
-/** Combined field-oriented mecanum drive and three-CR-servo mechanism control. */
+/** Competition TeleOp: field-oriented drive, proportional intake, and speed-controlled shooting. */
+@TeleOp(name = "13965 RoboGoats Competition TeleOp", group = "RoboGoats")
 public class RoboGoatsTeleOp extends LinearOpMode {
-    // Set these to the actual Control Hub mounting orientation before driving.
+    // Control Hub mounting shared with the Connelly field-oriented program.
     private static final RevHubOrientationOnRobot.LogoFacingDirection HUB_LOGO_DIRECTION =
             RevHubOrientationOnRobot.LogoFacingDirection.RIGHT;
     private static final RevHubOrientationOnRobot.UsbFacingDirection HUB_USB_DIRECTION =
             RevHubOrientationOnRobot.UsbFacingDirection.FORWARD;
 
     private static final double STICK_DEADBAND = 0.05;
-
-    // Enable individually only after the relevant commissioning steps.
-    private static final boolean INTAKE_VERIFIED = false;
-    private static final boolean SHOOTER_VERIFIED = false;
-    private static final boolean FEEDER_CALIBRATED = false;
 
     private static final double SHOOTER_TPS = 1250; // Connelly target, encoder ticks/sec
     private static final double SHOOTER_MIN_TPS = 1200; // Connelly feed threshold, encoder ticks/sec
@@ -67,7 +62,7 @@ public class RoboGoatsTeleOp extends LinearOpMode {
         DcMotor backLeft = hardwareMap.get(DcMotor.class, "left_back_drive");
         DcMotor backRight = hardwareMap.get(DcMotor.class, "right_back_drive");
 
-        // Match RoboGoatsDrive; verify these directions on the assembled robot.
+        // Validated mecanum motor directions.
         frontLeft.setDirection(DcMotor.Direction.REVERSE);
         backLeft.setDirection(DcMotor.Direction.REVERSE);
         frontRight.setDirection(DcMotor.Direction.FORWARD);
@@ -90,13 +85,13 @@ public class RoboGoatsTeleOp extends LinearOpMode {
         intake.setPower(0);
         intake.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         intake.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-        intake.setDirection(DcMotor.Direction.FORWARD); // VERIFY
-        left.setDirection(CRServo.Direction.FORWARD);    // VERIFY
-        right.setDirection(CRServo.Direction.REVERSE);   // VERIFY
+        intake.setDirection(DcMotor.Direction.FORWARD);
+        left.setDirection(CRServo.Direction.FORWARD);
+        right.setDirection(CRServo.Direction.REVERSE);
         left.setPower(0);
         right.setPower(0);
         shooter.setPower(0);
-        shooter.setDirection(DcMotor.Direction.FORWARD); // VERIFY
+        shooter.setDirection(DcMotor.Direction.FORWARD);
         shooter.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
         shooter.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
         shooter.setPIDFCoefficients(DcMotor.RunMode.RUN_USING_ENCODER,
@@ -111,18 +106,17 @@ public class RoboGoatsTeleOp extends LinearOpMode {
         telemetry.addLine("Field-oriented: point robot forward on the field before START");
         telemetry.addLine("Gamepad 1 START: reset field-forward direction");
 
-        telemetry.addLine("13965 RoboGoats TeleOp");
+        telemetry.addLine("13965 RoboGoats Competition TeleOp");
+        telemetry.addData("Status", "Ready for START");
         telemetry.addLine("Gamepad 1: left stick drive/strafe, right stick turn");
         telemetry.addLine("Gamepad 2: mechanism controls below");
         telemetry.addLine("RT intake, LT reverse, hold Y shooter + automatic feed, B cancel");
-        telemetry.addData("Intake verified", INTAKE_VERIFIED);
-        telemetry.addData("Shooter verified", SHOOTER_VERIFIED);
-        telemetry.addData("Feeder calibrated", FEEDER_CALIBRATED);
         telemetry.update();
         try {
             waitForStart();
             if (isStopRequested()) return;
             imu.resetYaw();
+            previousHeadingReset = gamepad1.start;
             feeder.setPower(0);
             while (opModeIsActive()) {
                 // Update every subsystem each pass; no blocking feed delays.
@@ -153,22 +147,22 @@ public class RoboGoatsTeleOp extends LinearOpMode {
 
                 boolean cancel = gamepad2.b;
                 double intakePower = 0;
-                if (INTAKE_VERIFIED && !cancel) {
+                if (!cancel) {
                     intakePower = gamepad2.right_trigger - gamepad2.left_trigger;
                 }
                 intake.setPower(intakePower);
                 left.setPower(intakePower);
                 right.setPower(intakePower);
 
-                boolean enabled = SHOOTER_VERIFIED && SHOOTER_TPS > 0
-                        && gamepad2.y && !cancel;
+                boolean enabled = gamepad2.y && !cancel;
                 if (enabled) shooter.setVelocity(SHOOTER_TPS);
                 else shooter.setPower(0);
 
                 double measured = shooter.getVelocity();
                 boolean ready = enabled && measured > SHOOTER_MIN_TPS;
-                boolean feeding = FEEDER_CALIBRATED && ready;
+                boolean feeding = ready;
                 feeder.setPower(feeding ? FEEDER_POWER : 0.0);
+                telemetry.addData("Mechanisms", cancel ? "CANCELED" : "ACTIVE");
                 telemetry.addData("Field heading (deg)", Math.toDegrees(heading));
                 telemetry.addData("FL / FR", "%.2f / %.2f", frontLeftPower, frontRightPower);
                 telemetry.addData("BL / BR", "%.2f / %.2f", backLeftPower, backRightPower);

@@ -2,18 +2,16 @@ package org.firstinspires.ftc.teamcode;
 
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.hardware.CRServo;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.PIDFCoefficients;
 
+// Maintenance program; remove @Disabled to make it selectable.
+@Disabled
 @TeleOp(name = "13965 Mechanism Test", group = "RoboGoats Tests")
 public class RoboGoatsMechanismTest extends LinearOpMode {
-    // Enable individually only after the relevant commissioning steps.
-    private static final boolean INTAKE_VERIFIED = false;
-    private static final boolean SHOOTER_VERIFIED = false;
-    private static final boolean FEEDER_CALIBRATED = false;
-
     private static final double SHOOTER_TPS = 1250; // Connelly target, encoder ticks/sec
     private static final double SHOOTER_MIN_TPS = 1200; // Connelly feed threshold, encoder ticks/sec
     private static final double FEEDER_POWER = 1.0; // Match Connelly continuous feeding power
@@ -31,13 +29,13 @@ public class RoboGoatsMechanismTest extends LinearOpMode {
         intake.setPower(0);
         intake.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         intake.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-        intake.setDirection(DcMotor.Direction.FORWARD); // VERIFY
-        left.setDirection(CRServo.Direction.FORWARD);    // VERIFY
-        right.setDirection(CRServo.Direction.REVERSE);   // VERIFY
+        intake.setDirection(DcMotor.Direction.FORWARD);
+        left.setDirection(CRServo.Direction.FORWARD);
+        right.setDirection(CRServo.Direction.REVERSE);
         left.setPower(0);
         right.setPower(0);
         shooter.setPower(0);
-        shooter.setDirection(DcMotor.Direction.FORWARD); // VERIFY
+        shooter.setDirection(DcMotor.Direction.FORWARD);
         shooter.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
         shooter.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
         shooter.setPIDFCoefficients(DcMotor.RunMode.RUN_USING_ENCODER,
@@ -45,9 +43,6 @@ public class RoboGoatsMechanismTest extends LinearOpMode {
 
         telemetry.addLine("Stationary test. Uses gamepad 2.");
         telemetry.addLine("RT intake, LT reverse, hold Y shooter + automatic feed, B cancel");
-        telemetry.addData("Intake verified", INTAKE_VERIFIED);
-        telemetry.addData("Shooter verified", SHOOTER_VERIFIED);
-        telemetry.addData("Feeder calibrated", FEEDER_CALIBRATED);
         telemetry.update();
         waitForStart();
 
@@ -57,21 +52,20 @@ public class RoboGoatsMechanismTest extends LinearOpMode {
             while (opModeIsActive()) {
                 boolean cancel = gamepad2.b;
                 double intakePower = 0;
-                if (INTAKE_VERIFIED && !cancel) {
+                if (!cancel) {
                     intakePower = gamepad2.right_trigger - gamepad2.left_trigger;
                 }
                 intake.setPower(intakePower);
                 left.setPower(intakePower);
                 right.setPower(intakePower);
 
-                boolean enabled = SHOOTER_VERIFIED && SHOOTER_TPS > 0
-                        && gamepad2.y && !cancel;
+                boolean enabled = gamepad2.y && !cancel;
                 if (enabled) shooter.setVelocity(SHOOTER_TPS);
                 else shooter.setPower(0);
 
                 double measured = shooter.getVelocity();
                 boolean ready = enabled && measured > SHOOTER_MIN_TPS;
-                boolean feeding = FEEDER_CALIBRATED && ready;
+                boolean feeding = ready;
                 feeder.setPower(feeding ? FEEDER_POWER : 0.0);
                 telemetry.addData("Intake power", intakePower);
                 telemetry.addData("Shooter requested / measured", "%.0f / %.0f",

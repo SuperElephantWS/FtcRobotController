@@ -2,8 +2,11 @@ package org.firstinspires.ftc.teamcode;
 
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.hardware.CRServo;
 
+// Maintenance program; remove @Disabled to make it selectable.
+@Disabled
 @TeleOp(name = "13965 Servo Calibration", group = "RoboGoats Tests")
 public class RoboGoatsServoTest extends LinearOpMode {
     @Override

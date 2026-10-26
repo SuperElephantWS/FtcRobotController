@@ -1,3 +1,9 @@
+# RoboGoats competition code
+
+Select **13965 RoboGoats Competition TeleOp** for matches. `RoboGoatsTeleOp.java` drives and operates all installed intake, launcher, and feeder mechanisms; physical commissioning is complete. See the [programming guide](../../../../../../../../ROBOGOATS_PROGRAMMING_GUIDE.md) for the match control map and hardware names.
+
+The drive-only, mechanism-only, and servo calibration OpModes are retained for maintenance and hidden with `@Disabled`.
+
 ## TeamCode Module
 
 Welcome!

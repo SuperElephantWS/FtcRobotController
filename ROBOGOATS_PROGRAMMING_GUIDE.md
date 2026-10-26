@@ -4,6 +4,26 @@ Team: **13965 — RoboGoats**
 Written: **October 25, 2026**  
 Project: FTC Robot Controller, SDK **12.0.0**, Java with Android Studio
 
+
+## Current competition program
+
+Select **13965 RoboGoats Competition TeleOp** on the Driver Station. `RoboGoatsTeleOp.java` controls the drivetrain and all installed intake/shooter/feeder mechanisms together. Physical commissioning is accepted as complete per the team’s instruction; there are no commissioning flags to enable.
+
+| Gamepad | Control | Match action |
+|---|---|---|
+| 1 | Left stick | Field-oriented forward/backward and strafe |
+| 1 | Right stick X | Turn; full normalized drive power |
+| 1 | START / Options | Reset field-forward to the current facing direction |
+| 2 | Right trigger minus left trigger | Proportional intake motor and both intake servos; equal inputs cancel |
+| 2 | Hold Y | Shooter at 1250 ticks/sec; automatic feeder at power 1.0 above 1200 ticks/sec |
+| 2 | Hold B | Cancel intake, shooter, and feeder; driving remains available |
+
+Point the robot field-forward before START. Releasing Y stops shooter power and feeding. Speed at or below 1200 ticks/sec stops feeding on the next loop; recovery resumes feeding while Y stays held. Releasing B allows held mechanism controls to resume. Driver Station STOP ends the program and zeros all outputs; the shooter may coast.
+
+The IMU is configured as `imu`, logo RIGHT / USB FORWARD. Shooter PIDF is `(40, 0, 0, 12.5)`. Hardware names match Connelly. There is no bumper slow mode, A-button feed request, readiness delay, pulse timer, or intake boost during shooting.
+
+Drive-only, mechanism-only, and servo calibration programs remain in source as maintenance tools and are hidden with `@Disabled`. Remove that annotation to use one during maintenance. The remaining staged material is a development reference; slide, vision, odometry, and autonomous sections describe future capabilities rather than installed match behavior.
+
 This guide starts with the robot you have now and adds capabilities in stages. Complete each stage's acceptance checks before moving on. Keep a working copy of each successful program so that a new mechanism never prevents you from testing the drivetrain.
 
 The Java programs below are examples to create in `TeamCode`; writing this guide does not install them on the robot. Values marked **MEASURE**, **CALIBRATE**, or **VERIFY** require measurements on your robot. They are not goBILDA StarterBot factory settings.
@@ -67,9 +87,9 @@ Record the following in section 14 as you learn them. You can complete the drivi
 - Which odometry pods you will use: Swingarm, 4-Bar, or another model.
 - Exact camera models, firmware, and whether your installed FTC system reliably supports all three together.
 
-### 1.4 Programming order
+### 1.4 Development reference order
 
-Follow this order:
+The drive, intake, shooter, feeder, and combined TeleOp stages are complete. The original development order is retained for reference:
 
 1. Drive only.
 2. Test each servo separately.
@@ -474,7 +494,7 @@ target_ticks_per_second =
 
 Use the manufacturer's counts with the same shaft reference as this formula. A direct-drive flywheel has an external ratio of 1. A flywheel running twice the motor output speed has a ratio of 2. Verify the physical gearing; do not assume every goBILDA motor has the same encoder counts per output revolution.
 
-The checked-in shooter programs match `FTC_ConnellyCode`: target **1250 encoder ticks/sec**, minimum feed velocity **strictly greater than 1200 encoder ticks/sec**, and `RUN_USING_ENCODER` PIDF coefficients **P=40, I=0, D=0, F=12.5**. Feeding now matches Connelly: power 1.0 continuously while shooter enable is held and measured velocity is above the minimum, with no readiness delay, pulse timer, or settling interval. RoboGoats retains its verification guards. If speed cannot track the target, inspect battery, encoder readings, configured motor type, load, and achievable speed before changing PIDF coefficients.
+The checked-in shooter programs match `FTC_ConnellyCode`: target **1250 encoder ticks/sec**, minimum feed velocity **strictly greater than 1200 encoder ticks/sec**, and `RUN_USING_ENCODER` PIDF coefficients **P=40, I=0, D=0, F=12.5**. Feeding now matches Connelly: power 1.0 continuously while shooter enable is held and measured velocity is above the minimum, with no readiness delay, pulse timer, or settling interval. The competition program has no commissioning guards; mechanism controls are active. If speed cannot track the target, inspect battery, encoder readings, configured motor type, load, and achievable speed before changing PIDF coefficients.
 
 ### 6.3 Feeder behavior
 
@@ -485,31 +505,29 @@ The feeder is checked every control-loop iteration, matching Connelly:
 - Stop feeding on the next loop when velocity is at or below 1200, Y is released, or B is held.
 - Resume automatically when speed recovers while Y remains held.
 - There is no A-button feed request, readiness delay, timed pulse, or settling interval.
-- Shooter and feeder verification guards must be enabled before operation.
+- Shooter and feeder controls are active in the competition program; the maintenance-only program is hidden with `@Disabled`.
 
 Driving, intake, and shooter continue updating every loop. Continuous feeding does not measure piece count or index position.
 
 ### 6.4 Create `RoboGoatsMechanismTest.java`
 
-This complete **stationary mechanism test** does not drive the robot. It uses three CR servos: two intake side servos and one feeder. Three guards start disabled: enable the intake after checking directions, the shooter after verifying the Connelly settings on the robot, and feeding after servo calibration. Calibrate one feature at a time.
+This complete **stationary mechanism test** does not drive the robot. It uses three CR servos: two intake side servos and one feeder. Physical commissioning is complete. This maintenance-only program has active mechanism controls but is hidden with `@Disabled`; the match program is `RoboGoatsTeleOp.java`.
 
 ```java
 package org.firstinspires.ftc.teamcode;
 
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
+import com.qualcomm.robotcore.eventloop.opmode.Disabled;
 import com.qualcomm.robotcore.hardware.CRServo;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
 import com.qualcomm.robotcore.hardware.PIDFCoefficients;
 
+// Maintenance program; remove @Disabled to make it selectable.
+@Disabled
 @TeleOp(name = "13965 Mechanism Test", group = "RoboGoats Tests")
 public class RoboGoatsMechanismTest extends LinearOpMode {
-    // Enable individually only after the relevant commissioning steps.
-    private static final boolean INTAKE_VERIFIED = false;
-    private static final boolean SHOOTER_VERIFIED = false;
-    private static final boolean FEEDER_CALIBRATED = false;
-
     private static final double SHOOTER_TPS = 1250; // Connelly target, encoder ticks/sec
     private static final double SHOOTER_MIN_TPS = 1200; // Connelly feed threshold, encoder ticks/sec
     private static final double FEEDER_POWER = 1.0; // Match Connelly continuous feeding power
@@ -527,13 +545,13 @@ public class RoboGoatsMechanismTest extends LinearOpMode {
         intake.setPower(0);
         intake.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
         intake.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
-        intake.setDirection(DcMotor.Direction.FORWARD); // VERIFY
-        left.setDirection(CRServo.Direction.FORWARD);    // VERIFY
-        right.setDirection(CRServo.Direction.REVERSE);   // VERIFY
+        intake.setDirection(DcMotor.Direction.FORWARD);
+        left.setDirection(CRServo.Direction.FORWARD);
+        right.setDirection(CRServo.Direction.REVERSE);
         left.setPower(0);
         right.setPower(0);
         shooter.setPower(0);
-        shooter.setDirection(DcMotor.Direction.FORWARD); // VERIFY
+        shooter.setDirection(DcMotor.Direction.FORWARD);
         shooter.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
         shooter.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
         shooter.setPIDFCoefficients(DcMotor.RunMode.RUN_USING_ENCODER,
@@ -541,9 +559,6 @@ public class RoboGoatsMechanismTest extends LinearOpMode {
 
         telemetry.addLine("Stationary test. Uses gamepad 2.");
         telemetry.addLine("RT intake, LT reverse, hold Y shooter + automatic feed, B cancel");
-        telemetry.addData("Intake verified", INTAKE_VERIFIED);
-        telemetry.addData("Shooter verified", SHOOTER_VERIFIED);
-        telemetry.addData("Feeder calibrated", FEEDER_CALIBRATED);
         telemetry.update();
         waitForStart();
 
@@ -553,21 +568,20 @@ public class RoboGoatsMechanismTest extends LinearOpMode {
             while (opModeIsActive()) {
                 boolean cancel = gamepad2.b;
                 double intakePower = 0;
-                if (INTAKE_VERIFIED && !cancel) {
+                if (!cancel) {
                     intakePower = gamepad2.right_trigger - gamepad2.left_trigger;
                 }
                 intake.setPower(intakePower);
                 left.setPower(intakePower);
                 right.setPower(intakePower);
 
-                boolean enabled = SHOOTER_VERIFIED && SHOOTER_TPS > 0
-                        && gamepad2.y && !cancel;
+                boolean enabled = gamepad2.y && !cancel;
                 if (enabled) shooter.setVelocity(SHOOTER_TPS);
                 else shooter.setPower(0);
 
                 double measured = shooter.getVelocity();
                 boolean ready = enabled && measured > SHOOTER_MIN_TPS;
-                boolean feeding = FEEDER_CALIBRATED && ready;
+                boolean feeding = ready;
                 feeder.setPower(feeding ? FEEDER_POWER : 0.0);
                 telemetry.addData("Intake power", intakePower);
                 telemetry.addData("Shooter requested / measured", "%.0f / %.0f",
@@ -591,9 +605,9 @@ public class RoboGoatsMechanismTest extends LinearOpMode {
 Important behavior:
 
 1. All five hardware names must exist before this particular test can INIT. For earlier single-device tests, map only the device under test.
-2. The three false guards intentionally prevent actuation. Set only the guard for the feature you have commissioned to `true`.
-3. Shooter settings match Connelly: `SHOOTER_TPS = 1250`, `SHOOTER_MIN_TPS = 1200`, and PIDF `(40, 0, 0, 12.5)`. Verify these settings on the robot before setting `SHOOTER_VERIFIED = true`. Readiness requires measured speed strictly above the minimum, with no delay.
-4. Verify feeder direction and operation at Connelly power `FEEDER_POWER = 1.0` before setting `FEEDER_CALIBRATED = true`. Feeding is continuous while shooter enable is held and speed is above the threshold.
+2. Mechanism commissioning is complete. This maintenance OpMode is hidden with `@Disabled`; remove that annotation only when selecting it for maintenance.
+3. Shooter settings match Connelly: `SHOOTER_TPS = 1250`, `SHOOTER_MIN_TPS = 1200`, and PIDF `(40, 0, 0, 12.5)`. These are the accepted competition settings. Readiness requires measured speed strictly above the minimum, with no delay.
+4. The accepted feeder direction is REVERSE and Connelly power is `FEEDER_POWER = 1.0`. Feeding is continuous while shooter enable is held and speed is above the threshold.
 5. Assign a second controller to User 2. Without it, `gamepad2` inputs will not operate the mechanisms.
 6. Hold Y to spin up; feeding starts automatically when measured speed exceeds 1200 encoder ticks/sec.
 7. A is unused. Feeding stops whenever speed drops to or below the threshold and resumes automatically after speed recovers while Y remains held.
@@ -625,41 +639,17 @@ Important behavior:
 
 ## 7. Combine driving and mechanisms
 
-### 7.1 Make one TeleOp loop
+### 7.1 Competition TeleOp
 
-After the separate tests pass:
+`TeamCode/src/main/java/org/firstinspires/ftc/teamcode/RoboGoatsTeleOp.java` is the installed-hardware competition program. Select **13965 RoboGoats Competition TeleOp** after building and installing the app. It uses one START wait and one nonblocking control loop to update all four drive motors, the intake motor, both intake servos, the launcher, and the windmill feeder. A `finally` block stops all outputs when the program ends.
 
-1. Create `RoboGoatsTeleOp.java` by copying the drive program into `TeamCode`.
-2. Rename its public class to `RoboGoatsTeleOp` and its annotation to `13965 RoboGoats TeleOp`.
-3. Remove the drive program's bench wheel-test branch and its left-bumper test telemetry.
-4. Add the verified mechanism constants, enum, imports, hardware mappings, directions, and initialization from section 6.
-5. Declare the mechanism state variables once before `waitForStart()`.
-6. Use **one** `waitForStart()` and **one** `while (opModeIsActive())` loop.
-7. Inside that loop, run the drive calculations, mechanism state update, and telemetry update in sequence. Each pass updates every subsystem.
-8. Combine cleanup into one `finally` block that stops all motors and CR servos and commands zero power to all three CR servos.
-9. Build before deploying. Fix duplicate variable names and imports if copying code.
-10. Test combined controls at low drive power, first without game pieces.
+Physical testing is accepted as passed. Mechanisms are active without commissioning flags. Heading reset occurs at START and on a fresh gamepad 1 START press. The shooter-speed interlock and gamepad 2 B cancel remain active throughout the match.
 
-Do not nest the entire mechanism `while` loop inside the drive loop. Do not call one OpMode's `runOpMode()` from another. Do not launch hardware-control threads to make the mechanisms operate at the same time; a short repeating main loop is sufficient here.
+### 7.2 Competition control map
 
-### 7.2 Suggested final control map
+Use the control map at the beginning of this guide. Gamepad 1 drives; gamepad 2 operates mechanisms. Both triggers contribute proportionally to intake power. Holding Y enables the shooter and automatic feeding; holding B cancels mechanism outputs. A and both bumpers have no assigned match action.
 
-| Gamepad | Control | Action |
-|---|---|---|
-| 1 | Left stick | Forward/backward and strafe |
-| 1 | Right stick X | Turn |
-| 1 | Right bumper | Slow drive |
-| 2 | Right trigger | Collect |
-| 2 | Left trigger | Reverse intake, priority over collect |
-| 2 | Hold Y | Shooter enabled |
-| 2 | Tap A | Request one feed cycle |
-| 2 | Hold B | Mechanism cancel |
-| 2 | Right bumper | Reserved for future use |
-| 2 | Left stick Y | Future slide manual command |
-| 2 | D-pad | Future slide presets |
-| 2 | Left bumper | Future explicit slide homing request |
-
-The standalone slide test in section 8 uses gamepad 1; change those inputs to gamepad 2 during integration. Keep driver vision-assist controls distinct from the slow-drive control.
+Slide, camera, odometry, and autonomous additions below are future development work.
 
 ### 7.3 Organize after the combined version works
 
@@ -1257,7 +1247,7 @@ For longer paths, a maintained FTC path-following library may save work, but cho
 | CR servo creeps when released | Zero command, neutral calibration, actual CR mode |
 | Shooter velocity stays zero | Encoder plugged into matching port, correct motor type, valid nonzero target |
 | Shooter never ready | Target achievable, velocity sign, speed strictly above 1200 ticks/sec, encoder, load, battery |
-| Feeder does nothing | Calibrated guard, shooter held on, speed strictly above 1200 ticks/sec, B released |
+| Feeder does nothing | Shooter held on, speed strictly above 1200 ticks/sec, B released |
 | Driving pauses during feeding | Remove blocking sleep or inner mechanism loop |
 | Slide immediately claims home | Sensor stuck/shorted, incorrect polarity/type, switch already physically pressed |
 | Slide moves away from home | Motor direction; stop before changing anything |
