@@ -29,10 +29,14 @@
 
 package org.firstinspires.ftc.teamcode;
 
+import com.qualcomm.hardware.rev.RevHubOrientationOnRobot;
 import com.qualcomm.robotcore.eventloop.opmode.LinearOpMode;
 import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.DcMotor;
+import com.qualcomm.robotcore.hardware.IMU;
 import com.qualcomm.robotcore.util.ElapsedTime;
+
+import org.firstinspires.ftc.robotcore.external.navigation.AngleUnit;
 
 /*
  * This file contains an example of a Linear "OpMode".
@@ -48,6 +52,8 @@ import com.qualcomm.robotcore.util.ElapsedTime;
  * Also note that it is critical to set the correct rotation direction for each motor.  See details below.
  *
  * Holonomic drives provide the ability for the robot to move in three axes (directions) simultaneously.
+ * Translation uses the field-forward direction established at START or reset with gamepad 1 START.
+ * Configure the IMU as "imu" and set the hub orientation constants to match its mounting.
  * Each motion axis is controlled by one Joystick axis.
  *
  * 1) Axial:    Driving forward and backward               Left-joystick Forward/Backward
@@ -65,8 +71,11 @@ import com.qualcomm.robotcore.util.ElapsedTime;
 @TeleOp(name="13965 RoboGoats Drive", group="RoboGoats")
 public class RoboGoatsDrive extends LinearOpMode {
 
-    // Initial testing limit; increase only after verifying all wheel directions.
-    private static final double DRIVE_POWER_SCALE = 0.30;
+    // Set these to the actual Control Hub mounting orientation before driving.
+    private static final RevHubOrientationOnRobot.LogoFacingDirection HUB_LOGO_DIRECTION =
+            RevHubOrientationOnRobot.LogoFacingDirection.RIGHT;
+    private static final RevHubOrientationOnRobot.UsbFacingDirection HUB_USB_DIRECTION =
+            RevHubOrientationOnRobot.UsbFacingDirection.FORWARD;
 
     // Declare OpMode members for each of the 4 motors.
     private ElapsedTime runtime = new ElapsedTime();
@@ -80,10 +89,10 @@ public class RoboGoatsDrive extends LinearOpMode {
 
         // Initialize the hardware variables. Note that the strings used here must correspond
         // to the names assigned during the robot configuration step on the DS or RC devices.
-        frontLeftDrive = hardwareMap.get(DcMotor.class, "front_left_drive");
-        backLeftDrive = hardwareMap.get(DcMotor.class, "back_left_drive");
-        frontRightDrive = hardwareMap.get(DcMotor.class, "front_right_drive");
-        backRightDrive = hardwareMap.get(DcMotor.class, "back_right_drive");
+        frontLeftDrive = hardwareMap.get(DcMotor.class, "left_front_drive");
+        backLeftDrive = hardwareMap.get(DcMotor.class, "left_back_drive");
+        frontRightDrive = hardwareMap.get(DcMotor.class, "right_front_drive");
+        backRightDrive = hardwareMap.get(DcMotor.class, "right_back_drive");
 
         // ########################################################################################
         // !!!            IMPORTANT Drive Information. Test your motor directions.            !!!!!
@@ -99,22 +108,42 @@ public class RoboGoatsDrive extends LinearOpMode {
         backLeftDrive.setDirection(DcMotor.Direction.REVERSE);
         frontRightDrive.setDirection(DcMotor.Direction.FORWARD);
         backRightDrive.setDirection(DcMotor.Direction.FORWARD);
+        for (DcMotor motor : new DcMotor[] {frontLeftDrive, frontRightDrive, backLeftDrive, backRightDrive}) {
+            motor.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
+        }
+
+        IMU imu = hardwareMap.get(IMU.class, "imu");
+        if (!imu.initialize(new IMU.Parameters(new RevHubOrientationOnRobot(
+                HUB_LOGO_DIRECTION, HUB_USB_DIRECTION)))) {
+            throw new IllegalStateException("IMU initialization failed");
+        }
+        boolean previousHeadingReset = false;
+        telemetry.addLine("Field-oriented: point robot forward on the field before START");
+        telemetry.addLine("Gamepad 1 START: reset field-forward direction");
 
         // Wait for the game to start (driver presses START)
         telemetry.addData("Status", "Initialized");
         telemetry.update();
 
         waitForStart();
+        if (isStopRequested()) return;
+        imu.resetYaw();
         runtime.reset();
 
         // run until the end of the match (driver presses STOP)
         while (opModeIsActive()) {
             double max;
 
-            // POV Mode uses left joystick to go forward & strafe, and right joystick to rotate.
-            double axial   = -gamepad1.left_stick_y;  // Note: pushing stick forward gives negative value
-            double lateral =  gamepad1.left_stick_x;
-            double yaw     =  gamepad1.right_stick_x;
+            if (gamepad1.start && !previousHeadingReset) imu.resetYaw();
+            previousHeadingReset = gamepad1.start;
+            double heading = imu.getRobotYawPitchRollAngles().getYaw(AngleUnit.RADIANS);
+
+            // IMU yaw is counterclockwise-positive; the mixer uses forward and right.
+            double fieldForward = -gamepad1.left_stick_y;
+            double fieldRight = gamepad1.left_stick_x;
+            double axial = fieldForward * Math.cos(heading) - fieldRight * Math.sin(heading);
+            double lateral = fieldForward * Math.sin(heading) + fieldRight * Math.cos(heading);
+            double yaw = gamepad1.right_stick_x;
 
             // Combine the joystick requests for each axis-motion to determine each wheel's power.
             // Set up a variable for each drive wheel to save the power level for telemetry.
@@ -154,15 +183,17 @@ public class RoboGoatsDrive extends LinearOpMode {
             */
 
             // Send calculated power to wheels
-            frontLeftDrive.setPower(frontLeftPower * DRIVE_POWER_SCALE);
-            frontRightDrive.setPower(frontRightPower * DRIVE_POWER_SCALE);
-            backLeftDrive.setPower(backLeftPower * DRIVE_POWER_SCALE);
-            backRightDrive.setPower(backRightPower * DRIVE_POWER_SCALE);
+            frontLeftDrive.setPower(frontLeftPower);
+            frontRightDrive.setPower(frontRightPower);
+            backLeftDrive.setPower(backLeftPower);
+            backRightDrive.setPower(backRightPower);
 
             // Show the elapsed game time and wheel power.
+            telemetry.addData("Field heading (deg)", Math.toDegrees(heading));
             telemetry.addData("Status", "Run Time: " + runtime.toString());
             telemetry.addData("Front left/Right", "%4.2f, %4.2f", frontLeftPower, frontRightPower);
             telemetry.addData("Back  left/Right", "%4.2f, %4.2f", backLeftPower, backRightPower);
             telemetry.update();
         }
-    }}
+    }
+}

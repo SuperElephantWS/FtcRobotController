@@ -8,9 +8,9 @@ import com.qualcomm.robotcore.hardware.CRServo;
 public class RoboGoatsServoTest extends LinearOpMode {
     @Override
     public void runOpMode() throws InterruptedException {
-        // Test intake_left or intake_right by changing this name.
-        CRServo servo = hardwareMap.get(CRServo.class, "feeder");
-        servo.setDirection(CRServo.Direction.FORWARD); // VERIFY
+        // Test left_intake_servo or right_intake_servo by changing this name.
+        CRServo servo = hardwareMap.get(CRServo.class, "windmillServo");
+        servo.setDirection(CRServo.Direction.REVERSE); // Match Connelly windmillServo; verify if testing an intake servo.
         servo.setPower(0);
         telemetry.addLine("Hold A: +0.15; hold B: -0.15; release: stop.");
         telemetry.update();

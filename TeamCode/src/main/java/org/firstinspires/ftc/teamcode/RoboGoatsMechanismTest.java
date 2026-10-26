@@ -5,7 +5,7 @@ import com.qualcomm.robotcore.eventloop.opmode.TeleOp;
 import com.qualcomm.robotcore.hardware.CRServo;
 import com.qualcomm.robotcore.hardware.DcMotor;
 import com.qualcomm.robotcore.hardware.DcMotorEx;
-import com.qualcomm.robotcore.util.ElapsedTime;
+import com.qualcomm.robotcore.hardware.PIDFCoefficients;
 
 @TeleOp(name = "13965 Mechanism Test", group = "RoboGoats Tests")
 public class RoboGoatsMechanismTest extends LinearOpMode {
@@ -14,25 +14,23 @@ public class RoboGoatsMechanismTest extends LinearOpMode {
     private static final boolean SHOOTER_VERIFIED = false;
     private static final boolean FEEDER_CALIBRATED = false;
 
-    private static final double SHOOTER_TPS = 0;       // MEASURE, must be > 0
-    private static final double SPEED_TOLERANCE_TPS = 0; // MEASURE, must be > 0
-    private static final double FEEDER_POWER = 0.15;  // CALIBRATE power and direction
-    private static final double FEED_SECONDS = 0.20;  // CALIBRATE one-piece pulse
-    private static final double SETTLE_SECONDS = 0.25;// CALIBRATE stopped interval
-    private enum FeedState { REST, FEED, SETTLE }
+    private static final double SHOOTER_TPS = 1250; // Connelly target, encoder ticks/sec
+    private static final double SHOOTER_MIN_TPS = 1200; // Connelly feed threshold, encoder ticks/sec
+    private static final double FEEDER_POWER = 1.0; // Match Connelly continuous feeding power
 
     @Override
     public void runOpMode() throws InterruptedException {
-        DcMotor intake = hardwareMap.get(DcMotor.class, "intake_motor");
-        CRServo left = hardwareMap.get(CRServo.class, "intake_left");
-        CRServo right = hardwareMap.get(CRServo.class, "intake_right");
-        DcMotorEx shooter = hardwareMap.get(DcMotorEx.class, "shooter_motor");
-        CRServo feeder = hardwareMap.get(CRServo.class, "feeder");
-        feeder.setDirection(CRServo.Direction.FORWARD); // VERIFY positive feeds
+        DcMotor intake = hardwareMap.get(DcMotor.class, "intake");
+        CRServo left = hardwareMap.get(CRServo.class, "left_intake_servo");
+        CRServo right = hardwareMap.get(CRServo.class, "right_intake_servo");
+        DcMotorEx shooter = hardwareMap.get(DcMotorEx.class, "launcher");
+        CRServo feeder = hardwareMap.get(CRServo.class, "windmillServo");
+        feeder.setDirection(CRServo.Direction.REVERSE); // Match Connelly windmillServo direction.
         feeder.setPower(0);
 
         intake.setPower(0);
         intake.setMode(DcMotor.RunMode.RUN_WITHOUT_ENCODER);
+        intake.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.BRAKE);
         intake.setDirection(DcMotor.Direction.FORWARD); // VERIFY
         left.setDirection(CRServo.Direction.FORWARD);    // VERIFY
         right.setDirection(CRServo.Direction.REVERSE);   // VERIFY
@@ -42,14 +40,11 @@ public class RoboGoatsMechanismTest extends LinearOpMode {
         shooter.setDirection(DcMotor.Direction.FORWARD); // VERIFY
         shooter.setZeroPowerBehavior(DcMotor.ZeroPowerBehavior.FLOAT);
         shooter.setMode(DcMotor.RunMode.RUN_USING_ENCODER);
+        shooter.setPIDFCoefficients(DcMotor.RunMode.RUN_USING_ENCODER,
+                new PIDFCoefficients(40, 0, 0, 12.5));
 
-        FeedState state = FeedState.REST;
-        ElapsedTime clock = new ElapsedTime();
-        double stateStarted = 0;
-        double withinSpeedSince = -1;
-        boolean previousFeedButton = false;
         telemetry.addLine("Stationary test. Uses gamepad 2.");
-        telemetry.addLine("RT intake, LT reverse, hold Y shooter, A feed, B cancel");
+        telemetry.addLine("RT intake, LT reverse, hold Y shooter + automatic feed, B cancel");
         telemetry.addData("Intake verified", INTAKE_VERIFIED);
         telemetry.addData("Shooter verified", SHOOTER_VERIFIED);
         telemetry.addData("Feeder calibrated", FEEDER_CALIBRATED);
@@ -60,12 +55,10 @@ public class RoboGoatsMechanismTest extends LinearOpMode {
             if (isStopRequested()) return;
             feeder.setPower(0);
             while (opModeIsActive()) {
-                double now = clock.seconds();
                 boolean cancel = gamepad2.b;
                 double intakePower = 0;
                 if (INTAKE_VERIFIED && !cancel) {
-                    if (gamepad2.left_trigger > 0.1) intakePower = -0.25;
-                    else if (gamepad2.right_trigger > 0.1) intakePower = 0.40;
+                    intakePower = gamepad2.right_trigger - gamepad2.left_trigger;
                 }
                 intake.setPower(intakePower);
                 left.setPower(intakePower);
@@ -77,34 +70,14 @@ public class RoboGoatsMechanismTest extends LinearOpMode {
                 else shooter.setPower(0);
 
                 double measured = shooter.getVelocity();
-                boolean inBand = enabled && SPEED_TOLERANCE_TPS > 0
-                        && Math.abs(measured - SHOOTER_TPS) <= SPEED_TOLERANCE_TPS;
-                if (!inBand) withinSpeedSince = -1;
-                else if (withinSpeedSince < 0) withinSpeedSince = now;
-                boolean ready = inBand && now - withinSpeedSince >= 0.25;
-                boolean feedEdge = gamepad2.a && !previousFeedButton;
-                previousFeedButton = gamepad2.a;
-
-                if (!enabled || cancel || !FEEDER_CALIBRATED) {
-                    state = FeedState.REST;
-                } else if (state == FeedState.REST && feedEdge && ready) {
-                    state = FeedState.FEED;
-                    stateStarted = now;
-                    withinSpeedSince = -1; // Require recovery before another feed.
-                } else if (state == FeedState.FEED && now - stateStarted >= FEED_SECONDS) {
-                    state = FeedState.SETTLE;
-                    stateStarted = now;
-                } else if (state == FeedState.SETTLE && now - stateStarted >= SETTLE_SECONDS) {
-                    state = FeedState.REST;
-                }
-
-                feeder.setPower(FEEDER_CALIBRATED && state == FeedState.FEED
-                        ? FEEDER_POWER : 0.0);
+                boolean ready = enabled && measured > SHOOTER_MIN_TPS;
+                boolean feeding = FEEDER_CALIBRATED && ready;
+                feeder.setPower(feeding ? FEEDER_POWER : 0.0);
                 telemetry.addData("Intake power", intakePower);
                 telemetry.addData("Shooter requested / measured", "%.0f / %.0f",
                         enabled ? SHOOTER_TPS : 0, measured);
                 telemetry.addData("Shooter ready", ready);
-                telemetry.addData("Feeder", state);
+                telemetry.addData("Feeder running", feeding);
                 telemetry.update();
                 idle();
             }
